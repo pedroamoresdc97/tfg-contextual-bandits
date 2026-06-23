@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>UCB1 — Partición uniforme</title>
+<style>
+  body{font-family:sans-serif;background:#fff;margin:0;padding:20px;max-width:960px;}
+  h2{font-size:15px;font-weight:500;text-align:center;color:#333;margin-bottom:16px;}
+  .ctrl{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+  .ctrl label{font-size:13px;color:#666;min-width:80px;}
+  .ctrl input[type=range]{flex:1;}
+  .ctrl span{font-size:13px;font-weight:500;min-width:40px;}
+  .btns{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+  button{padding:7px 18px;border:1px solid #ccc;background:white;border-radius:6px;cursor:pointer;font-size:13px;}
+  button:hover{background:#f0f0f0;}button:active{transform:scale(0.97);}
+  .stats{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
+  .stat{background:#f5f5f5;border-radius:8px;padding:8px 14px;flex:1;text-align:center;min-width:80px;}
+  .stat-label{font-size:11px;color:#888;margin-bottom:3px;}
+  .stat-val{font-size:17px;font-weight:500;color:#333;}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#555;margin-top:8px;}
+  .leg-item{display:flex;align-items:center;gap:5px;}
+  .leg-sq{width:12px;height:12px;display:inline-block;border-radius:2px;}
+  #counters{display:flex;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px;overflow:hidden;}
+  .cell-count{flex:1;text-align:center;padding:6px 2px;border-right:1px solid #eee;transition:background 0.15s;}
+  .cell-count:last-child{border-right:none;}
+  .cell-count .cnt-label{font-size:10px;color:#999;margin-bottom:2px;}
+  .cell-count .cnt-val{font-size:15px;font-weight:600;color:#185FA5;}
+  .cell-count.active-cell{background:#FFF8DC;}
+</style>
+</head>
+<body>
+<h2 id="titulo">(a) Partición uniforme en [0,1], M = 7 celdas — Ronda t = 0</h2>
+<div class="ctrl"><label>Ronda</label><input type="range" id="ronda" min="0" max="5000" value="0" step="1"><span id="ronda-out">0</span></div>
+<div class="ctrl"><label>Velocidad</label><input type="range" id="speed" min="1" max="20" value="4" step="1"><span id="speed-out">4</span></div>
+<div class="btns">
+  <button id="btn-play">▶ Reproducir</button>
+  <button id="btn-step">+1 ronda</button>
+  <button id="btn-reset">↺ Reiniciar</button>
+</div>
+<div class="stats">
+  <div class="stat"><div class="stat-label">Ronda</div><div class="stat-val" id="s-ronda">0</div></div>
+  <div class="stat"><div class="stat-label">Celda activa</div><div class="stat-val" id="s-celda">—</div></div>
+  <div class="stat"><div class="stat-label">Índice UCB máx</div><div class="stat-val" id="s-ucb">—</div></div>
+  <div class="stat"><div class="stat-label">Visitas celda activa</div><div class="stat-val" id="s-n">—</div></div>
+</div>
+<canvas id="cv" style="width:100%;border:1px solid #eee;border-radius:8px 8px 0 0;display:block;"></canvas>
+<div id="counters"></div>
+<div class="legend" style="margin-top:10px;">
+  <span class="leg-item"><span style="width:20px;height:3px;background:#185FA5;display:inline-block;"></span> μ(a) real</span>
+  <span class="leg-item"><span style="width:20px;height:3px;background:#1D9E75;display:inline-block;"></span> Media empírica μ̂ᵢ</span>
+  <span class="leg-item"><span style="width:20px;border-top:2px dashed #1D9E75;display:inline-block;"></span> Índice UCB</span>
+  <span class="leg-item"><span class="leg-sq" style="background:#FFD966;border:1px solid #C8A000;"></span> Celda activa</span>
+  <span class="leg-item"><span class="leg-sq" style="background:#DCE9F5;"></span> Celdas inactivas</span>
+</div>
+<script>
+const M=7,T_MAX=5000,BLUE="#185FA5",GREEN="#1D9E75",RED="#C0392B";
+function mu(a){return 0.2+0.55/(1+Math.exp(-12*(a-0.5)));}
+function seededRng(seed){let s=seed;return()=>{s=(s*9301+49297)%233280;return s/233280;};}
+const history=[],n=new Array(M).fill(0),sumR=new Array(M).fill(0);
+const centers=Array.from({length:M},(_,i)=>(i+0.5)/M);
+const edges=Array.from({length:M+1},(_,i)=>i/M);
+history.push({n:[...n],sumR:[...sumR],active:-1});
+const rng=seededRng(42);
+for(let t=1;t<=T_MAX;t++){
+  let best=-Infinity,sel=0;
+  for(let i=0;i<M;i++){const idx=n[i]===0?Infinity:sumR[i]/n[i]+Math.sqrt(2*Math.log(t)/n[i]);if(idx>best){best=idx;sel=i;}}
+  const a=Math.max(0,Math.min(1,centers[sel]+(rng()-0.5)/M));
+  const reward=mu(a)+(rng()-0.5)*0.2;
+  n[sel]++;sumR[sel]+=reward;
+  history.push({n:[...n],sumR:[...sumR],active:sel});
+}
+const counterDiv=document.getElementById('counters');
+const cellDivs=[];
+for(let i=0;i<M;i++){
+  const d=document.createElement('div');
+  d.className='cell-count';
+  d.innerHTML=`<div class="cnt-label">Celda ${i+1}</div><div class="cnt-val" id="cnt-${i}">0</div>`;
+  counterDiv.appendChild(d);cellDivs.push(d);
+}
+const cv=document.getElementById('cv');
+const dpr=window.devicePixelRatio||1;
+cv.width=900*dpr;cv.height=480*dpr;cv.style.height='480px';
+const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);
+const W=900,H=480,PL=60,PR=20,PT=30,PB=50,CW=W-PL-PR,CH=H-PT-PB;
+function xp(a){return PL+a*CW;}function yp(v){return PT+CH-Math.min(v,1.5)/1.5*CH;}
+function drawFrame(t){
+  ctx.clearRect(0,0,W,H);
+  const s=history[t],nt=s.n,sr=s.sumR,active=s.active;
+  const muHat=nt.map((ni,i)=>ni>0?sr[i]/ni:null);
+  const ucbV=nt.map((ni,i)=>t===0||ni===0?null:Math.min(1.5,sr[i]/ni+Math.sqrt(2*Math.log(t)/ni)));
+  for(let i=0;i<M;i++){
+    ctx.fillStyle=i===active?"#FFD96688":"#DCE9F588";
+    ctx.fillRect(xp(edges[i]),PT,xp(edges[i+1])-xp(edges[i]),CH);
+    ctx.strokeStyle="white";ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(xp(edges[i]),PT);ctx.lineTo(xp(edges[i]),PT+CH);ctx.stroke();
+  }
+  ctx.strokeStyle="white";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(xp(1),PT);ctx.lineTo(xp(1),PT+CH);ctx.stroke();
+  ctx.strokeStyle="#aaa";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(PL,PT);ctx.lineTo(PL,PT+CH);ctx.lineTo(PL+CW,PT+CH);ctx.stroke();
+  ctx.fillStyle="#666";ctx.font="11px sans-serif";ctx.textAlign="right";
+  [0,0.2,0.4,0.6,0.8,1.0].forEach(v=>{
+    const y=yp(v);ctx.strokeStyle="#eee";ctx.lineWidth=0.7;
+    ctx.beginPath();ctx.moveTo(PL,y);ctx.lineTo(PL+CW,y);ctx.stroke();
+    ctx.fillStyle="#666";ctx.fillText(v.toFixed(1),PL-6,y+4);
+  });
+  ctx.textAlign="center";ctx.fillStyle="#666";
+  [0,0.2,0.4,0.6,0.8,1.0].forEach(v=>ctx.fillText(v.toFixed(1),xp(v),PT+CH+16));
+  ctx.save();ctx.translate(14,PT+CH/2);ctx.rotate(-Math.PI/2);
+  ctx.fillStyle="#444";ctx.font="12px sans-serif";ctx.textAlign="center";ctx.fillText("Recompensa",0,0);ctx.restore();
+  ctx.fillStyle="#444";ctx.font="12px sans-serif";ctx.textAlign="center";ctx.fillText("Brazo a ∈ [0,1]",PL+CW/2,H-6);
+  ctx.strokeStyle=BLUE;ctx.lineWidth=2.5;ctx.setLineDash([]);
+  ctx.beginPath();for(let k=0;k<=300;k++){const a=k/300,v=mu(a);k===0?ctx.moveTo(xp(a),yp(v)):ctx.lineTo(xp(a),yp(v));}ctx.stroke();
+  for(let i=0;i<M;i++){
+    const x0=xp(edges[i]),x1=xp(edges[i+1]);
+    if(muHat[i]!==null){ctx.strokeStyle=GREEN;ctx.lineWidth=2.2;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(x0,yp(muHat[i]));ctx.lineTo(x1,yp(muHat[i]));ctx.stroke();}
+    if(ucbV[i]!==null){
+      ctx.strokeStyle=GREEN;ctx.lineWidth=1.5;ctx.setLineDash([5,3]);ctx.beginPath();ctx.moveTo(x0,yp(ucbV[i]));ctx.lineTo(x1,yp(ucbV[i]));ctx.stroke();ctx.setLineDash([]);
+      if(muHat[i]!==null){const xc=(x0+x1)/2;ctx.strokeStyle=GREEN;ctx.lineWidth=1;ctx.setLineDash([2,2]);ctx.beginPath();ctx.moveTo(xc,yp(muHat[i]));ctx.lineTo(xc,yp(ucbV[i]));ctx.stroke();ctx.setLineDash([]);}
+    }
+  }
+  if(active>=0&&ucbV[active]!==null&&muHat[active]!==null){
+    const xc=(xp(edges[active])+xp(edges[active+1]))/2;
+    const ymid=(yp(muHat[active])+yp(ucbV[active]))/2;
+    const xt=xc-55,yt=ymid-30;
+    ctx.strokeStyle=GREEN;ctx.lineWidth=1;ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(xt+40,yt+18);ctx.lineTo(xc-4,ymid);ctx.stroke();
+    ctx.fillStyle=GREEN;ctx.font="10px sans-serif";ctx.textAlign="center";
+    ctx.fillText("bono de",xt+40,yt+8);ctx.fillText("exploración",xt+40,yt+20);
+    const ex0=xp(edges[active]),ex1=xp(edges[active+1]);
+    ctx.fillStyle="#FFD966";ctx.strokeStyle="#C8A000";ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(ex0+2,PT+2,ex1-ex0-4,28,4);ctx.fill();ctx.stroke();
+    ctx.fillStyle="#7A5C00";ctx.font="9px sans-serif";ctx.textAlign="center";
+    ctx.fillText("celda activa",ex0+(ex1-ex0)/2,PT+13);ctx.fillText("(max índice)",ex0+(ex1-ex0)/2,PT+24);
+  }
+  ctx.fillStyle="white";ctx.strokeStyle=RED;ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.roundRect(PL+8,PT+CH-40,195,26,4);ctx.fill();ctx.stroke();
+  ctx.fillStyle=RED;ctx.font="11px sans-serif";ctx.textAlign="left";
+  ctx.fillText("|μ(a) − μ(b)| ≤ L·D(a,b)",PL+14,PT+CH-22);
+  for(let i=0;i<M;i++){
+    document.getElementById(`cnt-${i}`).textContent=nt[i];
+    cellDivs[i].className='cell-count'+(i===active?' active-cell':'');
+  }
+  document.getElementById('titulo').textContent=`(a) Partición uniforme en [0,1], M = ${M} celdas — Ronda t = ${t}`;
+  document.getElementById('s-ronda').textContent=t;
+  document.getElementById('s-celda').textContent=active>=0?active+1:'—';
+  document.getElementById('s-n').textContent=active>=0?nt[active]:'—';
+  document.getElementById('s-ucb').textContent=t>0&&active>=0&&ucbV[active]!==null?ucbV[active].toFixed(3):'—';
+}
+let current=0,playing=false,animId;
+function renderT(t){current=Math.max(0,Math.min(T_MAX,t));document.getElementById('ronda').value=current;document.getElementById('ronda-out').textContent=current;drawFrame(current);}
+function stepAnim(){if(!playing)return;const spd=parseInt(document.getElementById('speed').value);renderT(current+spd);if(current>=T_MAX){playing=false;document.getElementById('btn-play').textContent='▶ Reproducir';return;}animId=setTimeout(()=>requestAnimationFrame(stepAnim),50);}
+document.getElementById('ronda').addEventListener('input',e=>{playing=false;document.getElementById('btn-play').textContent='▶ Reproducir';clearTimeout(animId);renderT(parseInt(e.target.value));});
+document.getElementById('speed').addEventListener('input',e=>{document.getElementById('speed-out').textContent=e.target.value;});
+document.getElementById('btn-play').addEventListener('click',()=>{if(current>=T_MAX)current=0;playing=!playing;document.getElementById('btn-play').textContent=playing?'⏸ Pausar':'▶ Reproducir';if(playing)requestAnimationFrame(stepAnim);else clearTimeout(animId);});
+document.getElementById('btn-step').addEventListener('click',()=>{playing=false;clearTimeout(animId);document.getElementById('btn-play').textContent='▶ Reproducir';renderT(current+1);});
+document.getElementById('btn-reset').addEventListener('click',()=>{playing=false;clearTimeout(animId);document.getElementById('btn-play').textContent='▶ Reproducir';renderT(0);});
+renderT(0);
+</script>
+</body>
+</html>
