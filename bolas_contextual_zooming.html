@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Contextual Zooming — Simulador</title>
+<style>
+  body{font-family:sans-serif;background:#fff;margin:0;padding:20px;max-width:1100px;}
+  h2{font-size:15px;font-weight:500;text-align:center;color:#003466;margin-bottom:12px;}
+  .ctrl{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
+  .ctrl label{font-size:13px;color:#666;min-width:90px;}
+  .ctrl input[type=range]{flex:1;}
+  .ctrl span{font-size:13px;font-weight:500;min-width:40px;}
+  .btns{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+  button{padding:7px 16px;border:1px solid #ccc;background:white;border-radius:6px;cursor:pointer;font-size:13px;}
+  button:hover{background:#f0f0f0;}
+  .layout{display:flex;gap:20px;align-items:flex-start;}
+  .panel{background:#f8f9fc;border:1px solid #e0e4ef;border-radius:10px;padding:14px;min-width:240px;max-width:260px;}
+  .panel h3{font-size:11px;font-weight:600;color:#003466;margin:0 0 10px 0;text-transform:uppercase;letter-spacing:0.5px;}
+  .info-row{display:flex;justify-content:space-between;margin-bottom:5px;font-size:12px;}
+  .info-label{color:#888;}
+  .info-val{font-weight:600;color:#003466;}
+  .info-val.gold{color:#B48C00;}
+  .explain{background:#fff;border-left:3px solid #B48C00;padding:8px 10px;border-radius:0 6px 6px 0;margin-top:10px;font-size:11px;color:#444;line-height:1.6;}
+  .balls-list{margin-top:6px;max-height:220px;overflow-y:auto;}
+  .ball-item{display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr 1.5fr;font-size:10px;padding:3px 2px;border-bottom:1px solid #eee;gap:4px;align-items:center;}
+  .ball-header{display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr 1.5fr;font-size:10px;font-weight:600;color:#888;padding:2px 0;border-bottom:2px solid #ddd;margin-bottom:2px;gap:4px;}
+  canvas{border:1px solid #eee;border-radius:8px;display:block;}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#555;margin-top:8px;}
+  .leg-item{display:flex;align-items:center;gap:4px;}
+  #gen-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-top:6px; align-items:center;}
+  #loading{text-align:center;padding:40px;font-size:14px;color:#003466;}
+  
+  .gen-toggle {
+    display:flex; 
+    align-items:center; 
+    gap:4px; 
+    font-size:11px; 
+    cursor:pointer; 
+    padding: 3px 6px;
+    border-radius: 4px;
+    transition: opacity 0.2s, background 0.2s;
+    user-select: none;
+  }
+  .gen-toggle:hover {
+    background: #f0f0f0;
+  }
+  .gen-hidden {
+    opacity: 0.3;
+  }
+</style>
+</head>
+<body>
+<h2>Simulador Contextual Zooming — Espacio X × Y</h2>
+<div id="loading">⏳ Simulando 10 000 rondas... por favor espera.</div>
+<div id="main" style="display:none;">
+  <div class="ctrl">
+    <label>Ronda</label>
+    <input type="range" id="ronda" min="0" max="10000" value="0" step="1">
+    <span id="ronda-out">0</span>
+  </div>
+  <div class="ctrl">
+    <label>Velocidad</label>
+    <input type="range" id="speed" min="1" max="200" value="20" step="1">
+    <span id="speed-out">20</span>
+  </div>
+  <div class="btns">
+    <button id="btn-play">▶ Reproducir</button>
+    <button id="btn-step">+1 ronda</button>
+    <button id="btn-reset">↺ Reiniciar</button>
+  </div>
+  <div id="gen-legend" title="Haz clic en una generación para ocultarla/mostrarla"></div>
+  <div class="layout" style="margin-top:10px;">
+    <canvas id="cv"></canvas>
+    <div style="display:flex;flex-direction:column;gap:12px;flex:1;">
+      <div class="panel">
+        <h3>Estado de la ronda</h3>
+        <div class="info-row"><span class="info-label">Ronda t</span><span class="info-val" id="s-ronda">0</span></div>
+        <div class="info-row"><span class="info-label">Contexto x_t</span><span class="info-val gold" id="s-xt">—</span></div>
+        <div class="info-row"><span class="info-label">Oferta y_t</span><span class="info-val gold" id="s-yt">—</span></div>
+        <div class="info-row"><span class="info-label">y*(x_t) real</span><span class="info-val" id="s-yopt">—</span></div>
+        <div class="info-row"><span class="info-label">Recompensa</span><span class="info-val gold" id="s-rew">—</span></div>
+        <div class="info-row"><span class="info-label">Bola seleccionada</span><span class="info-val gold" id="s-sel">—</span></div>
+        <div class="info-row"><span class="info-label">Generación</span><span class="info-val gold" id="s-gen">—</span></div>
+        <div class="info-row"><span class="info-label">Nueva bola hija</span><span class="info-val gold" id="s-new">—</span></div>
+        <div class="info-row"><span class="info-label">Bolas activas</span><span class="info-val" id="s-bolas">1</span></div>
+        <div class="explain" id="s-explain">Al inicio solo existe B₀ (gen 0).</div>
+      </div>
+      <div class="panel">
+        <h3>Bolas activas</h3>
+        <div class="ball-header"><span>ID</span><span>radio</span><span>gen</span><span>n</span><span>media</span></div>
+        <div class="balls-list" id="balls-list"></div>
+      </div>
+    </div>
+  </div>
+  <div class="legend" style="margin-top:10px;">
+    <span class="leg-item"><span style="width:20px;height:3px;background:#003466;display:inline-block;"></span> y*(x) óptimo</span>
+    <span class="leg-item"><span style="width:7px;height:7px;background:#B48C00;display:inline-block;border-radius:50%;"></span> (x_t, y_t)</span>
+    <span class="leg-item">Borde dorado grueso = bola seleccionada</span>
+  </div>
+</div>
+
+<script>
+// Ajustado T_MAX a 10000, SOFT_FACTOR a 8.0, y mantenemos R_MIN a 0.002
+const T_MAX=10000, R_MIN=0.002, SOFT_FACTOR=8.0; 
+const BLUE="#003466", GOLD="#B48C00";
+const GEN_COLORS=['#003466','#1a7abf','#2eab6e','#e8a020','#c0392b','#8e44ad','#16a085','#d35400', '#f39c12', '#2c3e50'];
+function genColor(g){return GEN_COLORS[Math.min(g,GEN_COLORS.length-1)];}
+
+function yOpt(x){return 0.2+0.5*(0.5+0.35*Math.sin(3*x));}
+function mu(x,y){return Math.exp(-10*(y-yOpt(x))**2);}
+function seededRng(seed){let s=seed;return()=>{s=(s*9301+49297)%233280;return s/233280;};}
+function dist(ax,ay,bx,by){return Math.sqrt((ax-bx)**2+(ay-by)**2);}
+
+function simulateAsync(T, onDone){
+  const rng=seededRng(42);
+  const STEP=1;
+  let balls=[{cx:0.5,cy:0.5,r:0.72,n:0,rew:0,id:0,gen:0}];
+  let nextId=1, maxGen=0;
+  const history=[];
+  history.push({balls:balls.map(b=>({...b})),selected:-1,played:null,reward:0,xt:null,yt:null,newBall:false,relevantCount:0,selR:0,selN:0,selMu:0,selGen:0,maxGen:0});
+
+  let t=1;
+  function chunk(){
+    const end=Math.min(t+500, T+1);
+    while(t<end){
+      const xt=rng();
+      let relevant=balls.filter(b=>Math.abs(xt-b.cx)<=b.r);
+      if(relevant.length===0)relevant=[balls.reduce((a,b)=>a.r>b.r?a:b)];
+      const conf=b=>1*Math.sqrt(Math.log(Math.max(t,2))/(1+b.n));
+      const idx=b=>(b.n>0?b.rew/b.n:0)+b.r+conf(b);
+      let selBall=relevant[0],bestIdx=-Infinity;
+      for(const b of relevant){const i=idx(b);if(i>bestIdx){bestIdx=i;selBall=b;}}
+      const yt=Math.max(0,Math.min(1,selBall.cy+(rng()-0.5)*selBall.r*1.4));
+      const reward=mu(xt,yt)+(rng()-0.5)*0.05;
+      selBall.n++;selBall.rew+=reward;
+      
+      const confVal=conf(selBall);
+      let newBall=false;
+      let childRadius = selBall.r / 2;
+      
+      if(confVal <= (selBall.r * SOFT_FACTOR) && childRadius >= R_MIN){
+        let alreadyCovered = balls.some(b => b.r <= childRadius && dist(xt, yt, b.cx, b.cy) <= b.r);
+        if(!alreadyCovered){
+            const ng=selBall.gen+1;
+            if(ng>maxGen) maxGen=ng;
+            balls.push({cx:xt, cy:yt, r:childRadius, n:0, rew:0, id:nextId++, gen:ng});
+            newBall=true;
+        }
+      }
+      
+      history.push({
+        balls:balls.map(b=>({...b})),selected:selBall.id,played:[xt,yt],
+        reward:Math.round(reward*1000)/1000,
+        xt:Math.round(xt*1000)/1000,yt:Math.round(yt*1000)/1000,
+        newBall,selR:Math.round(selBall.r*1000)/1000,
+        selN:selBall.n,selMu:Math.round((selBall.rew/selBall.n)*1000)/1000,
+        selGen:selBall.gen,relevantCount:relevant.length,maxGen
+      });
+      t++;
+    }
+    document.getElementById('loading').textContent=`⏳ Simulando... ${Math.round(t/T*100)}%`;
+    if(t<=T) setTimeout(chunk,0);
+    else onDone(history, maxGen);
+  }
+  setTimeout(chunk,0);
+}
+
+simulateAsync(T_MAX, function(history, maxGen){
+  document.getElementById('loading').style.display='none';
+  document.getElementById('main').style.display='block';
+
+  const div=document.getElementById('gen-legend');
+  div.innerHTML='<span style="font-size:11px;color:#888;margin-right:2px;">Filtro Visual (clic para alternar):</span>';
+  
+  let hiddenGens = new Set();
+  let drawFrameGlobal;
+  let currentTGlobal = 0;
+
+  for(let g=0;g<=Math.min(maxGen,GEN_COLORS.length-1);g++){
+    const span=document.createElement('span');
+    span.className = 'gen-toggle';
+    span.innerHTML=`<span style="width:12px;height:12px;border-radius:50%;background:${genColor(g)};display:inline-block;"></span> Gen ${g} (r≈${(0.72/Math.pow(2,g)).toFixed(3)})`;
+    
+    span.onclick = () => {
+      if (hiddenGens.has(g)) {
+        hiddenGens.delete(g);
+        span.classList.remove('gen-hidden');
+      } else {
+        hiddenGens.add(g);
+        span.classList.add('gen-hidden');
+      }
+      if (drawFrameGlobal) drawFrameGlobal(currentTGlobal);
+    };
+    div.appendChild(span);
+  }
+
+  const cv=document.getElementById('cv');
+  const dpr=window.devicePixelRatio||1;
+  const SIZE=560;
+  cv.width=SIZE*dpr;cv.height=SIZE*dpr;cv.style.width=SIZE+'px';cv.style.height=SIZE+'px';
+  const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);
+  const PAD=55,PLOT=SIZE-PAD*2;
+  function px(x){return PAD+x*PLOT;}
+  function py(y){return PAD+(1-y)*PLOT;}
+  function pr(r){return r*PLOT;}
+
+  function getExplanation(s,t){
+    if(t===0)return"Solo existe <b>B₀ (gen 0)</b>, radio 0.72, cubre todo [0,1]².";
+    if(t<=10)return`<b>Primeras rondas:</b> B₀ única bola. Bono de exploración enorme.`;
+    if(s.newBall)return`✨ <b>Nueva bola gen ${s.selGen+1}</b> en (${s.xt},${s.yt}), radio ${(s.selR/2).toFixed(3)}. Se refina esta zona.`;
+    if(s.relevantCount===1)return`<b>1 bola relevante</b> para x=${s.xt}: B${s.selected} (gen ${s.selGen}, n=${s.selN}).`;
+    return`<b>${s.relevantCount} bolas relevantes</b> para x=${s.xt}. Gana B${s.selected} (gen ${s.selGen}) por mayor índice.`;
+  }
+
+  function drawFrame(t){
+    ctx.clearRect(0,0,SIZE,SIZE);
+    const s=history[t];
+    ctx.fillStyle='#f8f9fc';ctx.fillRect(PAD,PAD,PLOT,PLOT);
+    ctx.strokeStyle='#e8eaf0';ctx.lineWidth=0.5;
+    [0.25,0.5,0.75].forEach(v=>{
+      ctx.beginPath();ctx.moveTo(px(v),PAD);ctx.lineTo(px(v),PAD+PLOT);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(PAD,py(v));ctx.lineTo(PAD+PLOT,py(v));ctx.stroke();
+    });
+    ctx.strokeStyle=BLUE;ctx.lineWidth=1.8;ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(PAD,PAD);ctx.lineTo(PAD,PAD+PLOT);ctx.lineTo(PAD+PLOT,PAD+PLOT);ctx.stroke();
+    ctx.fillStyle=BLUE;ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+    ctx.fillText('contexto x ∈ X',PAD+PLOT/2,SIZE-8);
+    ctx.save();ctx.translate(14,PAD+PLOT/2);ctx.rotate(-Math.PI/2);ctx.fillText('oferta y ∈ Y',0,0);ctx.restore();
+    ctx.font='10px sans-serif';ctx.fillStyle='#888';
+    [0,0.25,0.5,0.75,1].forEach(v=>{
+      ctx.textAlign='center';ctx.fillText(v.toFixed(2),px(v),PAD+PLOT+16);
+      ctx.textAlign='right';ctx.fillText(v.toFixed(2),PAD-5,py(v)+4);
+    });
+
+    const sorted=[...s.balls].sort((a,b)=>a.id===s.selected?1:b.id===s.selected?-1:b.r-a.r);
+    for(const b of sorted){
+      if (hiddenGens.has(b.gen)) continue;
+      
+      const isSel=b.id===s.selected;
+      const r=pr(b.r);
+      const col=genColor(b.gen);
+      ctx.beginPath();ctx.arc(px(b.cx),py(b.cy),r,0,2*Math.PI);
+      ctx.fillStyle=isSel?'rgba(180,140,0,0.15)':'rgba(0,52,102,0.05)';
+      ctx.fill();
+      ctx.strokeStyle=isSel?GOLD:col;
+      ctx.lineWidth=isSel?3:Math.max(0.8,2.5-b.gen*0.3);
+      ctx.setLineDash(isSel?[]:[5,3]);ctx.stroke();ctx.setLineDash([]);
+      ctx.beginPath();ctx.arc(px(b.cx),py(b.cy),isSel?3.5:2,0,2*Math.PI);
+      ctx.fillStyle=isSel?GOLD:col;ctx.fill();
+      if(r>18||isSel){
+        ctx.font=`${isSel?10:8}px sans-serif`;ctx.fillStyle=isSel?GOLD:col;
+        ctx.textAlign='center';
+        ctx.fillText(`B${b.id} g${b.gen} n=${b.n}`,px(b.cx),py(b.cy)-r-4);
+      }
+    }
+
+    ctx.strokeStyle=BLUE;ctx.lineWidth=2.5;ctx.setLineDash([]);
+    ctx.beginPath();for(let i=0;i<=300;i++){const x=i/300;i===0?ctx.moveTo(px(x),py(yOpt(x))):ctx.lineTo(px(x),py(yOpt(x)));}
+    ctx.stroke();
+    ctx.fillStyle=BLUE;ctx.font='bold 10px sans-serif';ctx.textAlign='left';
+    ctx.fillText('y*(x)',px(1)+4,py(yOpt(1)));
+
+    if(s.xt!==null){
+      ctx.strokeStyle=GOLD;ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+      ctx.beginPath();ctx.moveTo(px(s.xt),PAD);ctx.lineTo(px(s.xt),PAD+PLOT);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle=GOLD;ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+      ctx.fillText(`x_t=${s.xt}`,px(s.xt),PAD-10);
+    }
+
+    if(s.played){
+      ctx.beginPath();ctx.arc(px(s.played[0]),py(s.played[1]),5,0,2*Math.PI);
+      ctx.fillStyle=GOLD;ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+    }
+
+    document.getElementById('s-ronda').textContent=t;
+    document.getElementById('s-xt').textContent=s.xt!==null?s.xt:'—';
+    document.getElementById('s-yt').textContent=s.yt!==null?s.yt:'—';
+    document.getElementById('s-yopt').textContent=s.xt!==null?Math.round(yOpt(s.xt)*1000)/1000:'—';
+    document.getElementById('s-rew').textContent=t>0?s.reward:'—';
+    document.getElementById('s-sel').textContent=t>0?`B${s.selected} (r=${s.selR})`:'—';
+    document.getElementById('s-gen').textContent=t>0?`Gen ${s.selGen}`:'—';
+    document.getElementById('s-new').textContent=s.newBall?'✨ Sí':'No';
+    
+    const bolasVisibles = s.balls.filter(b => !hiddenGens.has(b.gen)).length;
+    document.getElementById('s-bolas').textContent=`${bolasVisibles} (de ${s.balls.length})`;
+    document.getElementById('s-explain').innerHTML=getExplanation(s,t);
+
+    const list=document.getElementById('balls-list');list.innerHTML='';
+    for(const b of [...s.balls].sort((a,b)=>a.gen-b.gen||a.id-b.id)){
+      if (hiddenGens.has(b.gen)) continue; 
+      
+      const div=document.createElement('div');
+      div.className='ball-item'+(b.id===s.selected?' sel':'');
+      div.style.borderLeft=`3px solid ${genColor(b.gen)}`;
+      div.innerHTML=`<span>B${b.id}${b.id===s.selected?' ★':''}</span><span>${b.r.toFixed(3)}</span><span style="color:${genColor(b.gen)};font-weight:600">${b.gen}</span><span>${b.n}</span><span>${b.n>0?(b.rew/b.n).toFixed(3):'—'}</span>`;
+      list.appendChild(div);
+    }
+  }
+  
+  drawFrameGlobal = drawFrame; 
+
+  let playing=false,animId;
+  function renderT(t){currentTGlobal=Math.max(0,Math.min(T_MAX,t));document.getElementById('ronda').value=currentTGlobal;document.getElementById('ronda-out').textContent=currentTGlobal;drawFrame(currentTGlobal);}
+  function stepAnim(){if(!playing)return;const spd=parseInt(document.getElementById('speed').value);renderT(currentTGlobal+spd);if(currentTGlobal>=T_MAX){playing=false;document.getElementById('btn-play').textContent='▶ Reproducir';return;}animId=setTimeout(()=>requestAnimationFrame(stepAnim),30);}
+  document.getElementById('ronda').addEventListener('input',e=>{playing=false;document.getElementById('btn-play').textContent='▶ Reproducir';clearTimeout(animId);renderT(parseInt(e.target.value));});
+  document.getElementById('speed').addEventListener('input',e=>{document.getElementById('speed-out').textContent=e.target.value;});
+  document.getElementById('btn-play').addEventListener('click',()=>{if(currentTGlobal>=T_MAX)currentTGlobal=0;playing=!playing;document.getElementById('btn-play').textContent=playing?'⏸ Pausar':'▶ Reproducir';if(playing)requestAnimationFrame(stepAnim);else clearTimeout(animId);});
+  document.getElementById('btn-step').addEventListener('click',()=>{playing=false;clearTimeout(animId);document.getElementById('btn-play').textContent='▶ Reproducir';renderT(currentTGlobal+1);});
+  document.getElementById('btn-reset').addEventListener('click',()=>{playing=false;clearTimeout(animId);document.getElementById('btn-play').textContent='▶ Reproducir';renderT(0);});
+  
+  renderT(0);
+});
+</script>
+</body>
+</html>
